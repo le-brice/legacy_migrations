@@ -1,90 +1,139 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <talendJobExport>
   <jobName>job_customer_ltv_scoring</jobName>
-  <jobType>legacy_sql_heavy_with_embedded_lookup</jobType>
-  <purpose>Replicate the customer LTV scoring portion of the legacy stored procedure, intentionally keeping the multiplier lookup embedded and not modular.</purpose>
+  <jobType>governed_component_graph</jobType>
+  <purpose>Replicate the customer LTV scoring portion of the legacy stored procedure as a governed Talend component graph that migrates into dbt marts, seeds, and tests.</purpose>
   <dependsOnJob>job_daily_order_aggregation</dependsOnJob>
+  <migrationConvention>
+    <targetPattern>Express the embedded multiplier lookup as fixed reference data or a seed-backed source, then join it through standard components.</targetPattern>
+    <sqlPolicy>Do not embed SQL statements in Talend job components. Preserve LTV logic through component expressions, aggregate rules, and joins.</sqlPolicy>
+    <parityPolicy>The resulting customer grain, multiplier application, and LTV banding must match the stored procedure specification.</parityPolicy>
+  </migrationConvention>
   <source>
     <table connection="snowflake">DBT_SANDBOX_BRICE.LEGACY_PROD.daily_order_summary</table>
   </source>
+  <referenceData>
+    <table connection="snowflake">DBT_SANDBOX_BRICE.LEGACY_PROD.ltv_multiplier_ref</table>
+    <seedRecommendation>Materialize this lookup as a dbt seed instead of recreating it inline in orchestration.</seedRecommendation>
+  </referenceData>
   <target>
     <table connection="snowflake">DBT_SANDBOX_BRICE.LEGACY_PROD.customer_ltv</table>
     <writeMode>create_or_replace</writeMode>
+    <targetGrain>one row per deduplicated logical customer</targetGrain>
   </target>
   <components>
     <component name="tSnowflakeInput_daily_order_summary" type="tSnowflakeInput">
-      <sql><![CDATA[
-select *
-from DBT_SANDBOX_BRICE.LEGACY_PROD.daily_order_summary
-      ]]></sql>
+      <description>Read customer-day order summary rows.</description>
+      <readTarget connection="snowflake">DBT_SANDBOX_BRICE.LEGACY_PROD.daily_order_summary</readTarget>
+      <selectedColumns>
+        <column>canonical_customer_id</column>
+        <column>customer_natural_key</column>
+        <column>full_name_clean</column>
+        <column>email_clean</column>
+        <column>country_code</column>
+        <column>loyalty_tier_clean</column>
+        <column>customer_segment</column>
+        <column>order_day</column>
+        <column>order_count</column>
+        <column>completed_order_count</column>
+        <column>gross_revenue_amount</column>
+        <column>completed_revenue_amount</column>
+        <column>discount_amount</column>
+      </selectedColumns>
     </component>
-    <component name="tSnowflakeRow_embedded_lookup_and_ltv" type="tSnowflakeRow">
-      <description>Intentionally hardcode multiplier reference creation and lookup inline instead of using a reusable reference component.</description>
-      <sql><![CDATA[
-create schema if not exists DBT_SANDBOX_BRICE.LEGACY_PROD;
-
-create or replace table DBT_SANDBOX_BRICE.LEGACY_PROD.ltv_multiplier_ref (
-    customer_segment varchar,
-    multiplier number(10,2)
-);
-
-insert overwrite into DBT_SANDBOX_BRICE.LEGACY_PROD.ltv_multiplier_ref
-select 'standard', 1.00
-union all
-select 'growth', 1.15
-union all
-select 'vip', 1.35
-;
-
-create or replace table DBT_SANDBOX_BRICE.LEGACY_PROD.customer_ltv as
-with customer_rollup as (
-    select
-        canonical_customer_id,
-        any_value(customer_natural_key) as customer_natural_key,
-        any_value(full_name_clean) as full_name_clean,
-        any_value(email_clean) as email_clean,
-        any_value(country_code) as country_code,
-        any_value(loyalty_tier_clean) as loyalty_tier_clean,
-        any_value(customer_segment) as customer_segment,
-        count(distinct order_day) as active_days,
-        sum(order_count) as lifetime_order_count,
-        sum(completed_order_count) as lifetime_completed_order_count,
-        sum(gross_revenue_amount) as lifetime_gross_revenue,
-        sum(completed_revenue_amount) as lifetime_completed_revenue,
-        sum(discount_amount) as lifetime_discount_amount,
-        avg(completed_revenue_amount) as avg_daily_completed_revenue
-    from DBT_SANDBOX_BRICE.LEGACY_PROD.daily_order_summary
-    group by 1
-)
-select
-    r.canonical_customer_id,
-    r.customer_natural_key,
-    r.full_name_clean,
-    r.email_clean,
-    r.country_code,
-    r.loyalty_tier_clean,
-    r.customer_segment,
-    m.multiplier as applied_multiplier,
-    r.active_days,
-    r.lifetime_order_count,
-    r.lifetime_completed_order_count,
-    r.lifetime_gross_revenue,
-    r.lifetime_completed_revenue,
-    r.lifetime_discount_amount,
-    r.avg_daily_completed_revenue,
-    round(r.lifetime_completed_revenue * m.multiplier, 2) as ltv_score,
-    case
-        when round(r.lifetime_completed_revenue * m.multiplier, 2) >= 1000 then 'platinum'
-        when round(r.lifetime_completed_revenue * m.multiplier, 2) >= 500 then 'gold'
-        when round(r.lifetime_completed_revenue * m.multiplier, 2) >= 150 then 'silver'
-        else 'bronze'
-    end as ltv_band
-from customer_rollup r
-left join DBT_SANDBOX_BRICE.LEGACY_PROD.ltv_multiplier_ref m
-    on r.customer_segment = m.customer_segment
-;
-      ]]></sql>
+    <component name="tFixedFlowInput_ltv_multiplier_ref" type="tFixedFlowInput">
+      <description>Define the segment multiplier lookup as reference rows that should become a dbt seed.</description>
+      <rows>
+        <row customer_segment="standard" multiplier="1.00" />
+        <row customer_segment="growth" multiplier="1.15" />
+        <row customer_segment="vip" multiplier="1.35" />
+      </rows>
+    </component>
+    <component name="tAggregateRow_customer_rollup" type="tAggregateRow">
+      <description>Aggregate customer-day rows to customer grain.</description>
+      <groupBy>
+        <column>canonical_customer_id</column>
+      </groupBy>
+      <carryThrough>
+        <column outputColumn="customer_natural_key" function="first_non_null">customer_natural_key</column>
+        <column outputColumn="full_name_clean" function="first_non_null">full_name_clean</column>
+        <column outputColumn="email_clean" function="first_non_null">email_clean</column>
+        <column outputColumn="country_code" function="first_non_null">country_code</column>
+        <column outputColumn="loyalty_tier_clean" function="first_non_null">loyalty_tier_clean</column>
+        <column outputColumn="customer_segment" function="first_non_null">customer_segment</column>
+      </carryThrough>
+      <operations>
+        <operation outputColumn="active_days" function="count_distinct">order_day</operation>
+        <operation outputColumn="lifetime_order_count" function="sum">order_count</operation>
+        <operation outputColumn="lifetime_completed_order_count" function="sum">completed_order_count</operation>
+        <operation outputColumn="lifetime_gross_revenue" function="sum">gross_revenue_amount</operation>
+        <operation outputColumn="lifetime_completed_revenue" function="sum">completed_revenue_amount</operation>
+        <operation outputColumn="lifetime_discount_amount" function="sum">discount_amount</operation>
+        <operation outputColumn="avg_daily_completed_revenue" function="avg">completed_revenue_amount</operation>
+      </operations>
+    </component>
+    <component name="tMap_join_multiplier_lookup" type="tMap">
+      <description>Left join customer rollup rows to the segment multiplier reference.</description>
+      <joinType>left</joinType>
+      <joinCondition>row_rollup.customer_segment = row_multiplier.customer_segment</joinCondition>
+    </component>
+    <component name="tMap_calculate_ltv" type="tMap">
+      <description>Compute applied multiplier, ltv score, and ltv band.</description>
+      <expressions>
+        <expression outputColumn="canonical_customer_id"><![CDATA[row_rollup.canonical_customer_id]]></expression>
+        <expression outputColumn="customer_natural_key"><![CDATA[row_rollup.customer_natural_key]]></expression>
+        <expression outputColumn="full_name_clean"><![CDATA[row_rollup.full_name_clean]]></expression>
+        <expression outputColumn="email_clean"><![CDATA[row_rollup.email_clean]]></expression>
+        <expression outputColumn="country_code"><![CDATA[row_rollup.country_code]]></expression>
+        <expression outputColumn="loyalty_tier_clean"><![CDATA[row_rollup.loyalty_tier_clean]]></expression>
+        <expression outputColumn="customer_segment"><![CDATA[row_rollup.customer_segment]]></expression>
+        <expression outputColumn="applied_multiplier"><![CDATA[row_multiplier.multiplier]]></expression>
+        <expression outputColumn="active_days"><![CDATA[row_rollup.active_days]]></expression>
+        <expression outputColumn="lifetime_order_count"><![CDATA[row_rollup.lifetime_order_count]]></expression>
+        <expression outputColumn="lifetime_completed_order_count"><![CDATA[row_rollup.lifetime_completed_order_count]]></expression>
+        <expression outputColumn="lifetime_gross_revenue"><![CDATA[row_rollup.lifetime_gross_revenue]]></expression>
+        <expression outputColumn="lifetime_completed_revenue"><![CDATA[row_rollup.lifetime_completed_revenue]]></expression>
+        <expression outputColumn="lifetime_discount_amount"><![CDATA[row_rollup.lifetime_discount_amount]]></expression>
+        <expression outputColumn="avg_daily_completed_revenue"><![CDATA[row_rollup.avg_daily_completed_revenue]]></expression>
+        <expression outputColumn="ltv_score"><![CDATA[Math.round(row_rollup.lifetime_completed_revenue * row_multiplier.multiplier * 100.0) / 100.0]]></expression>
+        <expression outputColumn="ltv_band"><![CDATA[(Math.round(row_rollup.lifetime_completed_revenue * row_multiplier.multiplier * 100.0) / 100.0) >= 1000 ? "platinum" : ((Math.round(row_rollup.lifetime_completed_revenue * row_multiplier.multiplier * 100.0) / 100.0) >= 500 ? "gold" : ((Math.round(row_rollup.lifetime_completed_revenue * row_multiplier.multiplier * 100.0) / 100.0) >= 150 ? "silver" : "bronze"))]]></expression>
+      </expressions>
+    </component>
+    <component name="tSnowflakeOutput_ltv_multiplier_ref" type="tSnowflakeOutput">
+      <description>Publish the multiplier reference table so downstream logic can use governed reference data.</description>
+      <writeTarget connection="snowflake">DBT_SANDBOX_BRICE.LEGACY_PROD.ltv_multiplier_ref</writeTarget>
+      <writeMode>create_or_replace</writeMode>
+    </component>
+    <component name="tSnowflakeOutput_customer_ltv" type="tSnowflakeOutput">
+      <description>Replace the legacy production-style customer LTV table with the scored customer output.</description>
+      <writeTarget connection="snowflake">DBT_SANDBOX_BRICE.LEGACY_PROD.customer_ltv</writeTarget>
+      <writeMode>create_or_replace</writeMode>
     </component>
   </components>
+  <connections>
+    <connection from="tSnowflakeInput_daily_order_summary" to="tAggregateRow_customer_rollup" type="FLOW_MAIN" />
+    <connection from="tAggregateRow_customer_rollup" to="tMap_join_multiplier_lookup" type="FLOW_MAIN" />
+    <connection from="tFixedFlowInput_ltv_multiplier_ref" to="tMap_join_multiplier_lookup" type="FLOW_LOOKUP" lookupKey="customer_segment" />
+    <connection from="tMap_join_multiplier_lookup" to="tMap_calculate_ltv" type="FLOW_MAIN" />
+    <connection from="tFixedFlowInput_ltv_multiplier_ref" to="tSnowflakeOutput_ltv_multiplier_ref" type="FLOW_MAIN" />
+    <connection from="tMap_calculate_ltv" to="tSnowflakeOutput_customer_ltv" type="FLOW_MAIN" />
+  </connections>
+  <dbtProjection>
+    <seeds>
+      <seed>ltv_multiplier_ref</seed>
+    </seeds>
+    <intermediateModels>
+      <model>int_customer_ltv_rollup</model>
+    </intermediateModels>
+    <martModels>
+      <model>customer_ltv</model>
+    </martModels>
+    <recommendedTests>
+      <test>not_null on canonical_customer_id</test>
+      <test>unique on canonical_customer_id</test>
+      <test>relationships from customer_ltv.customer_segment to ltv_multiplier_ref.customer_segment</test>
+      <test>accepted_values on ltv_band</test>
+    </recommendedTests>
+  </dbtProjection>
   <finalLegacyProdTable>DBT_SANDBOX_BRICE.LEGACY_PROD.customer_ltv</finalLegacyProdTable>
 </talendJobExport>

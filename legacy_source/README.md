@@ -1,6 +1,6 @@
 # Legacy migration spec: synthetic e-commerce chain
 
-This document is the exact business specification that the legacy Talend-style job must replicate.
+This document is the exact business specification that the governed Talend-style job exports must replicate.
 
 ## Source tables
 
@@ -15,6 +15,19 @@ It writes to:
 - `DBT_SANDBOX_BRICE.LEGACY_PROD.daily_order_summary`
 - `DBT_SANDBOX_BRICE.LEGACY_PROD.ltv_multiplier_ref`
 - `DBT_SANDBOX_BRICE.LEGACY_PROD.customer_ltv`
+
+## Migration convention
+
+Each Talend `.item` export should describe a component graph that can be migrated into a governed dbt project.
+
+Required conventions:
+
+1. Preserve the business logic and output grain described below.
+2. Represent work as Talend components and connections such as `tSnowflakeInput`, `tMap`, `tFilterRow`, `tAggregateRow`, `tJoin`, `tUniqRow`, `tSortRow`, `tFixedFlowInput`, and `tSnowflakeOutput`.
+3. Keep transformation details in metadata such as expressions, grouping rules, sort priority, dedupe rules, and lookup definitions.
+4. Do not embed SQL statements in the Talend jobs.
+5. Treat reusable lookup data as governed reference data that maps naturally to dbt seeds or small dimension models.
+6. Make the path to dbt explicit by documenting the projected staging, intermediate, mart, snapshot, macro, and test assets that correspond to the Talend graph.
 
 ## Step 1: `job_customer_dedup_and_clean`
 
@@ -152,4 +165,3 @@ The chained execution order is mandatory:
 3. `job_customer_ltv_scoring`
 
 Each step must fully replace its target table before the next step begins.
-
