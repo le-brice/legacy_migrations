@@ -1,0 +1,127 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<talendJobExport>
+  <jobName>job_daily_order_aggregation</jobName>
+  <jobType>tMap_chain_with_tFlowToIterate</jobType>
+  <purpose>Replicate the daily order aggregation portion of the legacy stored procedure.</purpose>
+  <dependsOnJob>job_customer_dedup_and_clean</dependsOnJob>
+  <sources>
+    <table connection="snowflake">DBT_SANDBOX_BRICE.LEGACY_PROD.customer_clean</table>
+    <table connection="snowflake">dbt_blepoutre_RAW.orders</table>
+  </sources>
+  <target>
+    <table connection="snowflake">DBT_SANDBOX_BRICE.LEGACY_PROD.daily_order_summary</table>
+    <writeMode>create_or_replace</writeMode>
+  </target>
+  <components>
+    <component name="tSnowflakeInput_customer_clean" type="tSnowflakeInput">
+      <sql><![CDATA[
+select *
+from DBT_SANDBOX_BRICE.LEGACY_PROD.customer_clean
+      ]]></sql>
+    </component>
+    <component name="tFlowToIterate_1" type="tFlowToIterate">
+      <description>Iterate cleaned customers into a downstream order aggregation pattern to emulate row-oriented Talend orchestration.</description>
+    </component>
+    <component name="tSnowflakeInput_orders" type="tSnowflakeInput">
+      <sql><![CDATA[
+select
+  order_id,
+  customer_id,
+  order_date,
+  order_status,
+  currency_code,
+  total_amount,
+  discount_amount
+from dbt_blepoutre_RAW.orders
+      ]]></sql>
+    </component>
+    <component name="tMap_currency_standardization" type="tMap">
+      <description>Standardize order currency codes before aggregation.</description>
+      <expressions>
+        <expression outputColumn="currency_code_standardized"><![CDATA[(row2.currency_code == null || StringHandling.TRIM(row2.currency_code).equals("")) ? "USD" : ((StringHandling.UPCASE(StringHandling.TRIM(row2.currency_code)).equals("USD") || StringHandling.UPCASE(StringHandling.TRIM(row2.currency_code)).equals("US$")) ? "USD" : (StringHandling.UPCASE(StringHandling.TRIM(row2.currency_code)).equals("EUR") ? "EUR" : (StringHandling.UPCASE(StringHandling.TRIM(row2.currency_code)).equals("GBP") ? "GBP" : (StringHandling.UPCASE(StringHandling.TRIM(row2.currency_code)).equals("MXN") ? "MXN" : StringHandling.UPCASE(StringHandling.TRIM(row2.currency_code))))))]]></expression>
+        <expression outputColumn="order_day"><![CDATA[TalendDate.formatDateInUTC("yyyy-MM-dd", row2.order_date)]]></expression>
+      </expressions>
+    </component>
+    <component name="tSnowflakeRow_aggregate" type="tSnowflakeRow">
+      <description>Push final grouped aggregation into Snowflake using the same SQL as the stored procedure.</description>
+      <sql><![CDATA[
+create schema if not exists DBT_SANDBOX_BRICE.LEGACY_PROD;
+
+create or replace table DBT_SANDBOX_BRICE.LEGACY_PROD.daily_order_summary as
+with orders_standardized as (
+    select
+        order_id,
+        customer_id,
+        cast(order_date as date) as order_day,
+        order_date,
+        order_status,
+        case
+            when trim(currency_code) is null or trim(currency_code) = '' then 'USD'
+            when upper(trim(currency_code)) in ('USD', 'US$') then 'USD'
+            when upper(trim(currency_code)) = 'EUR' then 'EUR'
+            when upper(trim(currency_code)) = 'GBP' then 'GBP'
+            when upper(trim(currency_code)) = 'MXN' then 'MXN'
+            else upper(trim(currency_code))
+        end as currency_code_standardized,
+        total_amount,
+        discount_amount
+    from dbt_blepoutre_RAW.orders
+), joined as (
+    select
+        c.canonical_customer_id,
+        c.customer_natural_key,
+        c.full_name_clean,
+        c.email_clean,
+        c.country_code,
+        c.loyalty_tier_clean,
+        c.customer_segment,
+        o.order_id,
+        o.order_day,
+        o.order_date,
+        o.order_status,
+        o.currency_code_standardized,
+        o.total_amount,
+        o.discount_amount
+    from DBT_SANDBOX_BRICE.LEGACY_PROD.customer_clean c
+    inner join orders_standardized o
+        on c.canonical_customer_id = o.customer_id
+), latest_currency as (
+    select
+        canonical_customer_id,
+        order_day,
+        currency_code_standardized,
+        row_number() over (
+            partition by canonical_customer_id, order_day
+            order by order_date desc, order_id desc
+        ) as rn
+    from joined
+)
+select
+    j.canonical_customer_id,
+    j.customer_natural_key,
+    j.full_name_clean,
+    j.email_clean,
+    j.country_code,
+    j.loyalty_tier_clean,
+    j.customer_segment,
+    j.order_day,
+    count(*) as order_count,
+    count_if(j.order_status = 'completed') as completed_order_count,
+    count_if(j.order_status = 'cancelled') as cancelled_order_count,
+    count_if(j.order_status = 'returned') as returned_order_count,
+    count_if(j.order_status = 'pending') as pending_order_count,
+    sum(j.total_amount) as gross_revenue_amount,
+    sum(case when j.order_status = 'completed' then j.total_amount else 0 end) as completed_revenue_amount,
+    sum(j.discount_amount) as discount_amount,
+    max(case when lc.rn = 1 then lc.currency_code_standardized end) as latest_currency_code
+from joined j
+left join latest_currency lc
+    on j.canonical_customer_id = lc.canonical_customer_id
+   and j.order_day = lc.order_day
+group by 1,2,3,4,5,6,7,8
+;
+      ]]></sql>
+    </component>
+  </components>
+  <finalLegacyProdTable>DBT_SANDBOX_BRICE.LEGACY_PROD.daily_order_summary</finalLegacyProdTable>
+</talendJobExport>
