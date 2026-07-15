@@ -36,7 +36,14 @@ clean-targets:         # directories to be removed by `dbt clean`
 # using the `{{ config(...) }}` macro.
 
 models:
-  my_new_project:
+  legacy_migration:
     # Applies to all files under models/example/
     example:
       +materialized: table
+
+seeds:
+  legacy_migration:
+    raw:
+      +database: dbt_sandbox_brice
+      +schema: RAW
+
