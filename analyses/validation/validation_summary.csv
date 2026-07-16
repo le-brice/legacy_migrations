@@ -1,0 +1,4 @@
+comparison_name,legacy_relation,dbt_model,compare_mode,status,row_count_match,grain_match,differences_found,accepted_differences,fixed_differences,notes
+customer_clean,DBT_SANDBOX_BRICE.LEGACY_PROD.customer_clean,customer_clean,row_level,pending_validation,,,,,,
+daily_order_summary,DBT_SANDBOX_BRICE.LEGACY_PROD.daily_order_summary,daily_order_summary,row_level,pending_validation,,,,,,
+customer_ltv,DBT_SANDBOX_BRICE.LEGACY_PROD.customer_ltv,customer_ltv,row_level,pending_validation,,,,,,

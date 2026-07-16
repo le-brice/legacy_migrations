@@ -2,7 +2,7 @@
 # Name your project! Project names should contain only lowercase characters
 # and underscores. A good package name should reflect your organization's
 # name or the intended use of these models
-name: 'my_new_project'
+name: 'legacy_migrations'
 version: '1.0.0'
 config-version: 2
 
@@ -10,8 +10,7 @@ config-version: 2
 profile: 'default'
 
 # These configurations specify where dbt should look for different types of files.
-# The `model-paths` config, for example, states that models in this project can be
-# found in the "models/" directory. You probably won't need to change these!
+# The `model-paths` config, for example, states that models in the "models/" directory. You probably won't need to change these!
 model-paths: ["models"]
 analysis-paths: ["analyses"]
 test-paths: ["tests"]
@@ -23,3 +22,17 @@ target-path: "target"
 clean-targets:
   - "target"
   - "dbt_packages"
+<<<<<<< HEAD
+
+models:
+  legacy_migrations:
+    example:
+      +materialized: table
+
+seeds:
+  legacy_migrations:
+    raw:
+      +database: dbt_sandbox_brice
+      +schema: RAW
+=======
+>>>>>>> 525010ed335e1fc79f1e0b6d7efe43550384f5d8
