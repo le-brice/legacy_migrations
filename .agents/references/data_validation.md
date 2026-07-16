@@ -8,7 +8,7 @@ This validation flow is migration-agnostic. It works for Talend migrations, Mati
 
 Use the shared mapping template at `.agents/references/migration_comparison_mapping.csv`, then copy its contents into the executable seed at `seeds/migration_comparison_mapping.csv`.
 
-The validation macro reads from the seed-backed mapping, not directly from the `.agents/` reference file.
+The validation macros read from the seed-backed mapping, not directly from the `.agents/` reference file.
 
 Minimum required fields:
 
@@ -50,6 +50,8 @@ The validation flow should create these artifacts:
 - one shared mapping template: `.agents/references/migration_comparison_mapping.csv`
 - one executable mapping seed: `seeds/migration_comparison_mapping.csv`
 - one validation macro entry point: `macros/validation/run_migration_validations.sql`
+- one validation summary retrieval macro: `macros/validation/get_migration_validation_summary.sql`
+- one targeted investigation macro: `macros/validation/investigate_migration_validation.sql`
 - one validation summary output file: `analyses/validation/validation_summary.csv`
 
 The validation logic should be driven by the seed-backed mapping. Do not rely on ad hoc one-off comparison queries.
@@ -62,8 +64,9 @@ The validation logic should be driven by the seed-backed mapping. Do not rely on
 4. choose validation method: `audit_helper` or fallback SQL
 5. run `dbt run-operation run_migration_validations`
 6. retrieve results with `dbt run-operation get_migration_validation_summary`
-7. write the comparison result summary into `analyses/validation/validation_summary.csv`
-8. roll the result into `migration_changes.md`
+7. if one output is flagged, run `dbt run-operation investigate_migration_validation --args '{"dbt_model": "<model_name>"}'`
+8. write the comparison result summary into `analyses/validation/validation_summary.csv`
+9. roll the result into `migration_changes.md`
 
 ## Set up the comparison: legacy vs dbt
 
@@ -80,7 +83,7 @@ Only after inputs are aligned does a remaining difference indicate a transformat
 
 If external packages are allowed, use `audit_helper` as the comparison engine for deeper comparison patterns.
 
-The shared validation macro itself can produce a lightweight Snowflake-backed summary using the executable mapping seed. Extend it with `audit_helper` for row classification, column difference analysis, and deeper parity workflows.
+The shared validation macro can produce a lightweight Snowflake-backed summary using the executable mapping seed. Use `audit_helper` inside that framework for relation identity checks and for deeper comparison patterns when you investigate a flagged output.
 
 Useful `audit_helper` macros include:
 
@@ -124,6 +127,24 @@ For each mapped output:
 - same-named column values when row-level comparison is used
 - metric totals and grouped distributions when aggregate comparison is used
 
+## Investigation pattern
+
+When an output is flagged as different, use the investigation macro to inspect:
+
+- row counts
+- distinct grain counts
+- duplicate grain counts
+- non-matching grain rows
+- a model-specific detail table written to the validation schema
+
+The investigation macro writes detail rows to:
+
+```text
+<target_schema>_validation.validation_details_<dbt_model>
+```
+
+This keeps investigation outputs reusable and prevents one model's drilldown from overwriting another.
+
 ## Explaining differences
 
 Every difference must be classified as one of:
@@ -155,5 +176,6 @@ Use a generic validation framework:
 - a shared validation macro that reads the mapping seed
 - a shared summary output table in Snowflake
 - a retrieval macro for reporting
+- a targeted investigation macro for flagged outputs
 
 This framework should be migration-agnostic. Migration-specific skills should only be responsible for producing or confirming the mapping.

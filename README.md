@@ -84,10 +84,11 @@ LEGACY.SCHEMA.daily_order_summary,daily_order_summary,canonical_customer_id|orde
 LEGACY.SCHEMA.customer_ltv,customer_ltv,canonical_customer_id,row_level,
 ```
 
-### Planned / shared execution artifacts
+### Shared execution artifacts
 
 - `macros/validation/run_migration_validations.sql`
 - `macros/validation/get_migration_validation_summary.sql`
+- `macros/validation/investigate_migration_validation.sql`
 
 ### Planned summary output
 
@@ -133,6 +134,7 @@ This repository currently includes:
 - a shared minimal mapping template
 - an executable seed-backed mapping pattern
 - generalized validation macros
+- a targeted investigation macro for flagged outputs
 - a Talend migration skill aligned to the shared validation framework
 
 ## Suggested workflow
