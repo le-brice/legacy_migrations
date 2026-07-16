@@ -6,7 +6,9 @@ This validation flow is migration-agnostic. It works for Talend migrations, Mati
 
 ## Required inputs
 
-Use the shared mapping template at `.agents/references/migration_comparison_mapping.csv`.
+Use the shared mapping template at `.agents/references/migration_comparison_mapping.csv`, then copy its contents into the executable seed at `seeds/migration_comparison_mapping.csv`.
+
+The validation macro reads from the seed-backed mapping, not directly from the `.agents/` reference file.
 
 Minimum required fields:
 
@@ -35,7 +37,7 @@ If yes:
 
 1. add `dbt-labs/audit_helper` to `packages.yml`
 2. run `dbt deps`
-3. use `audit_helper` macros as the comparison engine
+3. use `audit_helper` macros where appropriate for deeper comparison patterns
 
 If no:
 
@@ -45,21 +47,23 @@ If no:
 
 The validation flow should create these artifacts:
 
-- one shared mapping file: `.agents/references/migration_comparison_mapping.csv`
-- one validation entry-point analysis: `analyses/validation/run_migration_validations.sql`
+- one shared mapping template: `.agents/references/migration_comparison_mapping.csv`
+- one executable mapping seed: `seeds/migration_comparison_mapping.csv`
+- one validation macro entry point: `macros/validation/run_migration_validations.sql`
 - one validation summary output file: `analyses/validation/validation_summary.csv`
 
-The validation SQL should be driven by the mapping file. Do not rely on ad hoc one-off comparison queries.
+The validation logic should be driven by the seed-backed mapping. Do not rely on ad hoc one-off comparison queries.
 
 ## Validation flow
 
-1. `dbt compile`
-2. `dbt build` for the migrated scope into dev
-3. confirm or update `.agents/references/migration_comparison_mapping.csv`
+1. `dbt seed --select migration_comparison_mapping`
+2. `dbt compile`
+3. `dbt build` for the migrated scope into dev
 4. choose validation method: `audit_helper` or fallback SQL
-5. run the shared validation entry point
-6. write the comparison result summary into `analyses/validation/validation_summary.csv`
-7. roll the result into `migration_changes.md`
+5. run `dbt run-operation run_migration_validations`
+6. retrieve results with `dbt run-operation get_migration_validation_summary`
+7. write the comparison result summary into `analyses/validation/validation_summary.csv`
+8. roll the result into `migration_changes.md`
 
 ## Set up the comparison: legacy vs dbt
 
@@ -74,14 +78,9 @@ Only after inputs are aligned does a remaining difference indicate a transformat
 
 ## Preferred engine: audit_helper
 
-If external packages are allowed, use `audit_helper` as the comparison engine.
+If external packages are allowed, use `audit_helper` as the comparison engine for deeper comparison patterns.
 
-Recommended pattern:
-
-- the shared validation entry point should call project validation logic that loops through the mapping rows
-- for each row, it should compare `ref(dbt_model)` to the mapped `legacy_relation`
-- use the declared `grain_key` as the primary key set
-- summarize results per mapping row
+The shared validation macro itself can produce a lightweight Snowflake-backed summary using the executable mapping seed. Extend it with `audit_helper` for row classification, column difference analysis, and deeper parity workflows.
 
 Useful `audit_helper` macros include:
 
@@ -89,8 +88,6 @@ Useful `audit_helper` macros include:
 - `compare_and_classify_relation_rows`
 - `compare_which_relation_columns_differ`
 - `compare_relation_columns`
-
-Use `audit_helper` for the comparison mechanics. The mapping file provides the relation pairing and grain.
 
 ## Fallback pattern: SQL comparison
 
@@ -146,25 +143,17 @@ Write one summary row per mapping into `analyses/validation/validation_summary.c
 Recommended columns:
 
 ```csv
-comparison_name,legacy_relation,dbt_model,compare_mode,status,row_count_match,grain_match,differences_found,accepted_differences,fixed_differences,notes
-```
-
-Example:
-
-```csv
-comparison_name,legacy_relation,dbt_model,compare_mode,status,row_count_match,grain_match,differences_found,accepted_differences,fixed_differences,notes
-customer_clean,LEGACY.SCHEMA.customer_clean,customer_clean,row_level,pass,true,true,0,0,0,
-daily_order_summary,LEGACY.SCHEMA.daily_order_summary,daily_order_summary,row_level,pass,true,true,2,2,0,2 rounding differences accepted
-customer_ltv,LEGACY.SCHEMA.customer_ltv,customer_ltv,row_level,fail,true,true,15,0,0,ltv_score mismatch requires investigation
+comparison_name,legacy_relation,dbt_model,grain_key,compare_mode,status,row_count_match,grain_match,differences_found,accepted_differences,fixed_differences,notes
 ```
 
 ## Recommended implementation shape
 
 Use a generic validation framework:
 
-- a shared mapping file in `.agents/references/`
-- a shared validation macro that loops through mapped outputs
-- a shared validation analysis entry point
-- a shared summary output file
+- a shared mapping template in `.agents/references/`
+- an executable seed-backed mapping in `seeds/`
+- a shared validation macro that reads the mapping seed
+- a shared summary output table in Snowflake
+- a retrieval macro for reporting
 
 This framework should be migration-agnostic. Migration-specific skills should only be responsible for producing or confirming the mapping.
