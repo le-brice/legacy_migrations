@@ -9,6 +9,7 @@
       comparison_name,
       legacy_relation,
       dbt_model,
+      grain_key,
       compare_mode,
       legacy_row_count,
       dbt_row_count,
@@ -24,7 +25,7 @@
   {% if execute and results is not none %}
     {% for row in results.rows %}
       {% do log(
-        row[0] ~ ' | legacy=' ~ row[4] ~ ' | dbt=' ~ row[5] ~ ' | row_count_match=' ~ row[6],
+        row[0] ~ ' | grain=' ~ row[3] ~ ' | legacy=' ~ row[5] ~ ' | dbt=' ~ row[6] ~ ' | row_count_match=' ~ row[7],
         info=True
       ) %}
     {% endfor %}

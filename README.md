@@ -37,9 +37,12 @@ The framework also asks one explicit validation decision:
 
 - can `dbt-labs/audit_helper` be used for validation?
 
-### 3. Produce reusable validation artifacts
+### 3. Use executable mapping inputs
 
-The framework is designed around a small set of reusable artifacts instead of one-off validation work.
+The toolkit keeps a human-facing mapping template under `.agents/references/`, but validation is driven by an executable dbt seed:
+
+- reference template: `.agents/references/migration_comparison_mapping.csv`
+- executable input: `seeds/migration_comparison_mapping.csv`
 
 ## Toolkit contents
 
@@ -48,7 +51,14 @@ The framework is designed around a small set of reusable artifacts instead of on
 Under `.agents/references/`:
 
 - `data_validation.md` — generic validation methodology for comparing legacy outputs to dbt outputs
-- `migration_comparison_mapping.csv` — minimal template for pairing legacy outputs to dbt models
+- `migration_comparison_mapping.csv` — minimal human-facing mapping template for pairing legacy outputs to dbt models
+
+### Executable validation inputs
+
+Under `seeds/`:
+
+- `migration_comparison_mapping.csv` — executable seed-backed mapping used by the validation macros
+- `migration_comparison_mapping.yml` — seed properties for the executable mapping
 
 ### Migration-specific skills
 
@@ -62,7 +72,8 @@ The shared validation framework is built around these artifacts:
 
 ### Required input
 
-- `.agents/references/migration_comparison_mapping.csv`
+- `.agents/references/migration_comparison_mapping.csv` as the template
+- `seeds/migration_comparison_mapping.csv` as the executable mapping input
 
 Example:
 
@@ -73,11 +84,10 @@ LEGACY.SCHEMA.daily_order_summary,daily_order_summary,canonical_customer_id|orde
 LEGACY.SCHEMA.customer_ltv,customer_ltv,canonical_customer_id,row_level,
 ```
 
-### Planned execution artifact
+### Planned / shared execution artifacts
 
-- `analyses/validation/run_migration_validations.sql`
-
-This will be the shared validation entry point.
+- `macros/validation/run_migration_validations.sql`
+- `macros/validation/get_migration_validation_summary.sql`
 
 ### Planned summary output
 
@@ -86,14 +96,14 @@ This will be the shared validation entry point.
 Recommended schema:
 
 ```csv
-comparison_name,legacy_relation,dbt_model,compare_mode,status,row_count_match,grain_match,differences_found,accepted_differences,fixed_differences,notes
+comparison_name,legacy_relation,dbt_model,grain_key,compare_mode,status,row_count_match,grain_match,differences_found,accepted_differences,fixed_differences,notes
 ```
 
 ## Validation method
 
 ### Preferred path
 
-If allowed, use `dbt-labs/audit_helper` as the comparison engine.
+If allowed, use `dbt-labs/audit_helper` as the comparison engine for deeper comparison patterns.
 
 ### Fallback path
 
@@ -110,6 +120,7 @@ Migration-specific skills should:
 - identify final legacy outputs
 - map legacy outputs to dbt models
 - populate or confirm the shared comparison mapping
+- update the executable mapping seed
 - hand off validation to the shared framework
 
 They should not create their own separate validation methodology.
@@ -120,14 +131,9 @@ This repository currently includes:
 
 - a shared validation reference
 - a shared minimal mapping template
+- an executable seed-backed mapping pattern
+- generalized validation macros
 - a Talend migration skill aligned to the shared validation framework
-
-## What is still planned
-
-The executable validation assets are still to be built:
-
-- `macros/validation/run_migration_validations.sql`
-- `analyses/validation/run_migration_validations.sql`
 
 ## Suggested workflow
 
@@ -138,6 +144,7 @@ Use one branch for setup and toolkit only:
 - references
 - templates
 - skills
+- reusable validation macros
 - methodology docs
 
 ### Branch 2: toolkit applied to a real migration

@@ -1,0 +1,15 @@
+version: 2
+
+seeds:
+  - name: migration_comparison_mapping
+    description: Executable seed-backed mapping used by the shared migration validation framework.
+    columns:
+      - name: legacy_relation
+        data_tests:
+          - not_null
+      - name: dbt_model
+        data_tests:
+          - not_null
+      - name: grain_key
+        data_tests:
+          - not_null
