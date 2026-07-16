@@ -1,4 +1,4 @@
 legacy_relation,dbt_model,grain_key,compare_mode,notes
-LEGACY.SCHEMA.customer_clean,customer_clean,canonical_customer_id,row_level,
-LEGACY.SCHEMA.daily_order_summary,daily_order_summary,canonical_customer_id|order_day,row_level,composite grain
-LEGACY.SCHEMA.customer_ltv,customer_ltv,canonical_customer_id,row_level,
+DBT_SANDBOX_BRICE.LEGACY_PROD.customer_clean,customer_clean,canonical_customer_id,row_level,
+DBT_SANDBOX_BRICE.LEGACY_PROD.daily_order_summary,daily_order_summary,canonical_customer_id|order_day,row_level,composite grain
+DBT_SANDBOX_BRICE.LEGACY_PROD.customer_ltv,customer_ltv,canonical_customer_id,row_level,
