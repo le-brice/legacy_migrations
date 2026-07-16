@@ -8,7 +8,7 @@ This validation flow is migration-agnostic. It works for Talend migrations, Mati
 
 Use the shared mapping template at `.agents/references/migration_comparison_mapping.csv`, then copy its contents into the executable seed at `seeds/migration_comparison_mapping.csv`.
 
-The validation macro reads from the seed-backed mapping, not directly from the `.agents/` reference file.
+The validation macros read from the seed-backed mapping, not directly from the `.agents/` reference file.
 
 Minimum required fields:
 
