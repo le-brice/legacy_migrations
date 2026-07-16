@@ -19,6 +19,8 @@
       legacy_row_count number,
       dbt_row_count number,
       row_count_match boolean,
+      identical_flag boolean,
+      status varchar,
       compared_at timestamp_ntz,
       notes varchar
     )
@@ -52,6 +54,29 @@
       {% set notes = row[4] %}
       {% set comparison_name = dbt_model %}
 
+      {% set relation_parts = legacy_relation.split('.') %}
+      {% if relation_parts | length != 3 %}
+        {% do exceptions.raise_compiler_error('legacy_relation must be fully qualified as DATABASE.SCHEMA.IDENTIFIER. Got: ' ~ legacy_relation) %}
+      {% endif %}
+
+      {% set legacy_rel = api.Relation.create(
+        database=relation_parts[0],
+        schema=relation_parts[1],
+        identifier=relation_parts[2]
+      ) %}
+
+      {% set identical_sql %}
+        select are_tables_identical
+        from (
+          {{ audit_helper.quick_are_relations_identical(
+              a_relation=ref(dbt_model),
+              b_relation=legacy_rel
+          ) }}
+        ) audit_helper_result
+      {% endset %}
+      {% set identical_result = run_query(identical_sql) %}
+      {% set identical_flag = identical_result.rows[0][0] %}
+
       {% set insert_sql %}
         insert into {{ target.database }}.{{ validation_schema }}.validation_summary (
           comparison_name,
@@ -62,6 +87,8 @@
           legacy_row_count,
           dbt_row_count,
           row_count_match,
+          identical_flag,
+          status,
           compared_at,
           notes
         )
@@ -74,6 +101,8 @@
           legacy_counts.row_count,
           dbt_counts.row_count,
           legacy_counts.row_count = dbt_counts.row_count,
+          {{ 'true' if identical_flag else 'false' }},
+          '{{ 'identical' if identical_flag else 'different' }}',
           current_timestamp(),
           '{{ notes }}'
         from (
