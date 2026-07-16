@@ -14,6 +14,8 @@
       legacy_row_count,
       dbt_row_count,
       row_count_match,
+      identical_flag,
+      status,
       compared_at,
       notes
     from {{ target.database }}.{{ validation_schema }}.validation_summary
@@ -25,7 +27,7 @@
   {% if execute and results is not none %}
     {% for row in results.rows %}
       {% do log(
-        row[0] ~ ' | grain=' ~ row[3] ~ ' | legacy=' ~ row[5] ~ ' | dbt=' ~ row[6] ~ ' | row_count_match=' ~ row[7],
+        row[0] ~ ' | grain=' ~ row[3] ~ ' | legacy=' ~ row[5] ~ ' | dbt=' ~ row[6] ~ ' | row_count_match=' ~ row[7] ~ ' | identical=' ~ row[8] ~ ' | status=' ~ row[9],
         info=True
       ) %}
     {% endfor %}
