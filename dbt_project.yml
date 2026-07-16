@@ -22,7 +22,6 @@ target-path: "target"
 clean-targets:
   - "target"
   - "dbt_packages"
-<<<<<<< HEAD
 
 models:
   legacy_migrations:
@@ -34,5 +33,4 @@ seeds:
     raw:
       +database: dbt_sandbox_brice
       +schema: RAW
-=======
->>>>>>> 525010ed335e1fc79f1e0b6d7efe43550384f5d8
+
