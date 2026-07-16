@@ -1,0 +1,13 @@
+version: 2
+
+seeds:
+  - name: ltv_multiplier_ref
+    description: Static multiplier lookup used by the migrated customer LTV model.
+    columns:
+      - name: customer_segment
+        data_tests:
+          - not_null
+          - unique
+      - name: multiplier
+        data_tests:
+          - not_null

@@ -1,0 +1,50 @@
+version: 2
+
+models:
+  - name: customer_clean
+    description: Canonical deduplicated customer output migrated from the legacy Talend flow.
+    columns:
+      - name: canonical_customer_id
+        data_tests:
+          - not_null
+          - unique
+      - name: customer_segment
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ['standard', 'growth', 'vip']
+      - name: duplicate_record_count
+        data_tests:
+          - not_null
+
+  - name: daily_order_summary
+    description: Customer-day order aggregation migrated from the legacy Talend flow.
+    columns:
+      - name: canonical_customer_id
+        data_tests:
+          - not_null
+      - name: order_day
+        data_tests:
+          - not_null
+      - name: latest_currency_code
+        data_tests:
+          - not_null
+
+  - name: customer_ltv
+    description: Customer-level lifetime value scoring output migrated from the legacy Talend flow.
+    columns:
+      - name: canonical_customer_id
+        data_tests:
+          - not_null
+          - unique
+      - name: customer_segment
+        data_tests:
+          - relationships:
+              arguments:
+                to: ref('ltv_multiplier_ref')
+                field: customer_segment
+      - name: ltv_band
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ['bronze', 'silver', 'gold', 'platinum']
