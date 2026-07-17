@@ -1,162 +1,295 @@
-# Migration confidence toolkit for dbt
+# Generic migration toolkit for dbt
 
-This repository contains the foundation of a migration confidence toolkit designed to help prospects feel confident going into a migration to dbt.
+This repository provides a reusable workflow for migrating legacy data transformations into dbt and validating dbt outputs against legacy outputs.
 
-The goal is not only to say that a migration can be done. The goal is to provide a lightweight, repeatable, auditable framework that explains:
+It is designed to support the full migration lifecycle:
 
-- how legacy logic is inventoried and translated into dbt
-- what minimal input is required from the prospect
-- how legacy outputs are validated against dbt outputs
-- how differences are summarized and explained
-- which artifacts the migration process should produce
+- understand the legacy workflow
+- identify the dbt assets needed to reproduce it
+- build or refine migrated dbt assets
+- make legacy outputs available for comparison
+- validate dbt outputs against legacy outputs
+- investigate and explain mismatches
 
-## Design principles
+This README focuses on the toolkit itself. The Talend assets and stored-procedure macros left in this repo are example inputs to the toolkit, not the definition of the toolkit.
 
-### 1. Validation is migration-agnostic
+## What this repository provides
 
-The validation framework is shared across migration types. It should work for Talend migrations, Matillion migrations, stored procedure migrations, and other legacy-to-dbt rewrites.
+This repo includes reusable pieces for each phase of a migration.
 
-Migration-specific skills are responsible for identifying legacy outputs and mapping them to dbt models. The shared validation framework is responsible for comparison and parity reporting.
+### Legacy analysis inputs
 
-### 2. Ask for the least amount of information needed
+Use these files to understand what is being migrated:
 
-The framework intentionally keeps the required mapping input minimal.
+- `legacy_source/talend/` — example Talend exports and mapping notes
+- `legacy_source/README.md` — example business specification for a legacy workflow
 
-Required fields:
+In another project, this layer could contain exports from Talend, Matillion, Informatica, stored procedures, scheduled SQL jobs, or process documentation.
 
-- `legacy_relation`
-- `dbt_model`
-- `grain_key`
+### Standard dbt project areas
 
-Optional fields:
+These are the standard locations where migrated dbt assets should live:
 
-- `compare_mode`
-- `notes`
+- `models/staging/`
+- `models/intermediate/`
+- `models/marts/`
+- `tests/`
+- `snapshots/`
 
-The framework also asks one explicit validation decision:
-
-- can `dbt-labs/audit_helper` be used for validation?
-
-### 3. Use executable mapping inputs
-
-The toolkit keeps a human-facing mapping template under `.agents/references/`, but validation is driven by an executable dbt seed:
-
-- reference template: `.agents/references/migration_comparison_mapping.csv`
-- executable input: `seeds/migration_comparison_mapping.csv`
-
-## Toolkit contents
-
-### Shared references
-
-Under `.agents/references/`:
-
-- `data_validation.md` — generic validation methodology for comparing legacy outputs to dbt outputs
-- `migration_comparison_mapping.csv` — minimal human-facing mapping template for pairing legacy outputs to dbt models
+The toolkit does not assume those migrated models already exist. Early in the workflow, the wizard should help define and create them.
 
 ### Executable validation inputs
 
-Under `seeds/`:
+These drive validation once a migrated dbt output and a corresponding legacy output both exist:
 
-- `migration_comparison_mapping.csv` — executable seed-backed mapping used by the validation macros
-- `migration_comparison_mapping.yml` — seed properties for the executable mapping
+- `seeds/migration_comparison_mapping.csv` — executable mapping between legacy outputs and dbt models
+- `seeds/migration_comparison_mapping.yml` — metadata and tests for the mapping seed
 
-### Migration-specific skills
+The mapping seed is intentionally minimal. It is the handoff between migration work and validation work.
 
-Under `.agents/talend-migration/skill/`:
+### Shared validation framework
 
-- `skill.md` — Talend migration methodology, including how Talend outputs feed the shared validation framework
-
-## Validation framework
-
-The shared validation framework is built around these artifacts:
-
-### Required input
-
-- `.agents/references/migration_comparison_mapping.csv` as the template
-- `seeds/migration_comparison_mapping.csv` as the executable mapping input
-
-Example:
-
-```csv
-legacy_relation,dbt_model,grain_key,compare_mode,notes
-LEGACY.SCHEMA.customer_clean,customer_clean,canonical_customer_id,row_level,
-LEGACY.SCHEMA.daily_order_summary,daily_order_summary,canonical_customer_id|order_day,row_level,composite grain
-LEGACY.SCHEMA.customer_ltv,customer_ltv,canonical_customer_id,row_level,
-```
-
-### Shared execution artifacts
+These macros are the reusable core of the toolkit:
 
 - `macros/validation/run_migration_validations.sql`
 - `macros/validation/get_migration_validation_summary.sql`
 - `macros/validation/investigate_migration_validation.sql`
+- `macros/validation/get_validation_mapping_seed.sql`
 
-### Planned summary output
+Validation currently relies on `dbt-labs/audit_helper`, configured in `packages.yml`.
 
-- `analyses/validation/validation_summary.csv`
+### Example legacy recreation helpers
 
-Recommended schema:
+These macros are example implementations of a pattern you may use in a migration project:
 
-```csv
-comparison_name,legacy_relation,dbt_model,grain_key,compare_mode,status,row_count_match,grain_match,differences_found,accepted_differences,fixed_differences,notes
+- `macros/deploy_legacy_chain.sql`
+- `macros/run_legacy_chain.sql`
+
+Use them as reference when a project needs to recreate legacy outputs in the warehouse before running comparison checks.
+
+## Core migration workflow
+
+Use the toolkit in this order:
+
+1. inspect the legacy workflow
+2. identify the dbt assets needed
+3. create or refine migrated dbt assets
+4. prepare dependencies and inputs
+5. build the migrated dbt workflow
+6. make legacy outputs available for comparison
+7. run validation
+8. investigate differences
+9. extend validation scope as more outputs are migrated
+
+## Example wizard prompts by phase
+
+These prompts are examples. Adjust the wording to fit your migration, the assets already present in the repo, and the specific step you want the wizard to handle.
+
+### 1. Understand the legacy workflow
+
+Wizard should trigger:
+- read the relevant files under the legacy input directories
+- identify processing order, transformation logic, outputs, and business grain
+- summarize what must be preserved in dbt
+
+```text
+Walk me through the legacy assets in this repository and explain the workflow step by step, including the processing order, outputs, and expected grain.
 ```
 
-## Validation method
+Expected result:
+- summary of legacy business logic
+- list of outputs produced by the legacy workflow
+- clear description of grain and key transformations
 
-### Preferred path
+### 2. Plan the dbt migration
 
-If allowed, use `dbt-labs/audit_helper` as the comparison engine for deeper comparison patterns.
+Wizard should trigger:
+- inspect the legacy workflow inputs
+- inspect the existing dbt project structure
+- propose the staging, intermediate, mart, seed, test, and macro assets needed
 
-### Fallback path
+```text
+Read the legacy workflow and propose the dbt staging models, intermediate models, marts, seeds, tests, and macros needed to migrate it.
+```
 
-If `audit_helper` is not allowed, use fallback SQL patterns.
+Expected result:
+- recommended dbt asset structure
+- suggested grains and dependencies
+- notes on what should be a seed, source, staging model, intermediate model, or mart
 
-Both paths should follow the same shared mapping and produce the same summary output shape.
+### 3. Build the first migrated assets
 
-## What migration-specific skills should do
+Wizard should trigger:
+- read the relevant SQL and YAML files first
+- create or edit dbt SQL and properties files
+- validate changes with targeted dbt commands
 
-Migration-specific skills should:
+```text
+Help me build the first migrated dbt assets for this legacy workflow, following the conventions already used in this repository.
+```
 
-- inventory legacy logic
-- translate legacy logic into dbt assets
-- identify final legacy outputs
-- map legacy outputs to dbt models
-- populate or confirm the shared comparison mapping
-- update the executable mapping seed
-- hand off validation to the shared framework
+Expected result:
+- new or updated dbt assets
+- alignment with the repo structure and existing conventions
+- targeted validation of the changed assets
 
-They should not create their own separate validation methodology.
+### 4. Prepare the project to run
 
-## What is already included
+Wizard should trigger:
+- install or verify package dependencies
+- load required seeds or reference data if the project uses them
+- load or confirm the validation mapping seed if validation is in scope
 
-This repository currently includes:
+```text
+Prepare this repository to run the migration workflow. Install packages, load required seeds or reference data, and confirm any validation inputs are available.
+```
 
-- a shared validation reference
-- a shared minimal mapping template
-- an executable seed-backed mapping pattern
-- generalized validation macros
-- a targeted investigation macro for flagged outputs
-- a Talend migration skill aligned to the shared validation framework
+Expected result:
+- package dependency setup
+- seed loading where applicable
+- confirmation that validation inputs are ready when needed
 
-## Suggested workflow
+### 5. Build the dbt workflow
 
-### Branch 1: toolkit foundation
+Wizard should trigger:
+- identify the relevant migrated models and dependencies
+- run a scoped `dbt build`
+- summarize model and test results
 
-Use one branch for setup and toolkit only:
+```text
+Build the migrated dbt workflow for this legacy process and tell me whether the models and tests pass.
+```
 
-- references
-- templates
-- skills
-- reusable validation macros
-- methodology docs
+Expected result:
+- scoped build of the migrated chain
+- test outcomes
+- clear explanation of failures if anything breaks
 
-### Branch 2: toolkit applied to a real migration
+### 6. Make legacy outputs available for comparison
 
-Create a second branch from the toolkit branch for:
+Wizard should trigger:
+- determine whether legacy outputs already exist in a comparison environment
+- if not, run project-specific recreation helpers when available
+- confirm which legacy relations are ready for comparison
 
-- actual migrated dbt assets
-- actual populated mappings
-- actual validation analyses
-- actual comparison outputs
-- actual migration reporting
+```text
+Make the legacy outputs available for comparison, using any recreation scripts in this repository if needed, and confirm which legacy tables are ready to validate against.
+```
 
-This keeps the toolkit reusable and keeps migration execution separate from the framework itself.
+Expected result:
+- available legacy comparison relations
+- legacy recreation run if needed
+- confirmation of comparison readiness
+
+### 7. Validate dbt vs legacy
+
+Wizard should trigger:
+- confirm the validation mapping seed is in place
+- run the shared validation macro
+- read back the validation summary
+
+```text
+Run the migration validation workflow for the migrated outputs that currently exist and summarize which dbt outputs match legacy and which do not.
+```
+
+Expected result:
+- execution of the validation macros
+- row-count and identical/non-identical summary
+- list of outputs that need investigation
+
+### 8. Investigate differences
+
+Wizard should trigger:
+- run the investigation macro for the mismatched model
+- inspect grain-level mismatch outputs
+- summarize whether the issue is structural or value-level
+
+```text
+Investigate the mismatched migrated model and tell me whether the issue is caused by grain mismatches, duplicates, missing rows, or value-level differences.
+```
+
+Expected result:
+- grain-level investigation summary
+- indication of whether the issue is caused by joins, filtering, deduping, aggregation, or field-level logic
+- guidance on where to inspect the SQL next
+
+### 9. Extend the validation scope
+
+Wizard should trigger:
+- update the validation mapping seed if needed
+- update supporting legacy source definitions if needed
+- build the new model and run targeted validation
+
+```text
+I added a new migrated output. Update the validation mapping and any supporting source definitions if needed, then run the validation workflow for the new model.
+```
+
+Expected result:
+- updated validation inputs
+- targeted build and validation for the new output
+- summary of whether the new output matches legacy
+
+## When validation becomes relevant
+
+Validation starts after two things exist:
+
+1. the migrated dbt output is materialized
+2. the corresponding legacy output is available for comparison
+
+The comparison is driven by `seeds/migration_comparison_mapping.csv`, which maps:
+
+- `legacy_relation`
+- `dbt_model`
+- `grain_key`
+- `compare_mode`
+- `notes`
+
+Once both sides exist, the validation workflow is:
+
+1. load or refresh the mapping seed
+2. build the migrated dbt models
+3. make legacy outputs available
+4. run `run_migration_validations`
+5. review the summary
+6. investigate any mismatches
+
+## Where things live
+
+### Generic toolkit pieces
+
+- `macros/validation/`
+- `seeds/migration_comparison_mapping.csv`
+- `seeds/migration_comparison_mapping.yml`
+- `packages.yml`
+
+### Standard implementation areas for migrated dbt assets
+
+- `models/staging/`
+- `models/intermediate/`
+- `models/marts/`
+- `tests/`
+- `snapshots/`
+
+### Example inputs still included in this repo
+
+- `legacy_source/talend/`
+- `legacy_source/README.md`
+- `macros/deploy_legacy_chain.sql`
+- `macros/run_legacy_chain.sql`
+
+## What you should get from this repository
+
+By the end of using this toolkit, you should be able to:
+
+- explain a legacy workflow in business terms
+- identify the dbt assets needed to reproduce it
+- build and test migrated dbt assets
+- compare dbt outputs to legacy outputs in a repeatable way
+- investigate mismatches systematically instead of manually
+- reuse the same validation pattern across migration projects
+
+## Notes
+
+- This repository supports both migration work and post-migration validation.
+- Reseed `migration_comparison_mapping` any time you change `seeds/migration_comparison_mapping.csv`.
+- The example recreation macros are project-specific reference assets; the validation macros are the generic toolkit core.
