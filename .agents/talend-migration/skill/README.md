@@ -1,8 +1,8 @@
 # Talend migration skill
 
-This folder contains the Talend-specific migration skill used by the migration confidence toolkit.
+This folder contains the Talend-specific migration skill used by the generic migration toolkit.
 
-Its purpose is to help translate Talend jobs into dbt assets while staying aligned to the shared migration validation framework.
+Its purpose is to guide the operational workflow for migrating Talend jobs into dbt while handing off validation to the shared migration-agnostic validation framework.
 
 ## What this skill is responsible for
 
@@ -10,7 +10,8 @@ Its purpose is to help translate Talend jobs into dbt assets while staying align
 - translate Talend transformations into dbt models, seeds, snapshots, macros, tests, and documentation
 - identify the final legacy outputs produced by Talend jobs
 - map those outputs to migrated dbt models
-- populate or confirm the shared mapping file at `.agents/references/migration_comparison_mapping.csv`
+- populate or confirm the executable validation mapping at `seeds/migration_comparison_mapping.csv`
+- prepare the migration for the shared validation workflow
 
 ## What this skill does not own
 
@@ -36,4 +37,4 @@ Optional:
 ## Position in the toolkit
 
 Talend is one migration source feeding a generic validation framework.
-That same framework is intended to be reusable for other migration types as well.
+That same validation framework is intended to be reusable for other migration types as well.
