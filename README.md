@@ -293,3 +293,4 @@ By the end of using this toolkit, you should be able to:
 - This repository supports both migration work and post-migration validation.
 - Reseed `migration_comparison_mapping` any time you change `seeds/migration_comparison_mapping.csv`.
 - The example recreation macros are project-specific reference assets; the validation macros are the generic toolkit core.
+
