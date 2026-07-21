@@ -1,0 +1,62 @@
+version: 2
+
+models:
+  - name: stg_customers
+    description: Clean customer staging model built from the raw customer seed with light renaming and type normalization.
+    columns:
+      - name: customer_id
+        description: Unique customer identifier.
+        data_tests:
+          - not_null
+          - unique
+      - name: email
+        description: Customer email address.
+        data_tests:
+          - not_null
+      - name: country
+        description: ISO-like country code normalized to uppercase.
+      - name: signup_date
+        description: Date the customer signed up.
+        data_tests:
+          - not_null
+
+  - name: int_events_enriched
+    description: Event stream enriched with customer attributes and a normalized event taxonomy.
+    columns:
+      - name: event_id
+        description: Unique event identifier.
+        data_tests:
+          - not_null
+          - unique
+      - name: customer_id
+        description: Customer identifier carried by the event.
+      - name: normalized_event_type
+        description: Standardized event bucket used for downstream analytics.
+        data_tests:
+          - not_null
+      - name: customer_country
+        description: Customer country joined from the customer staging model.
+
+  - name: mart_customer_cohort_kpis
+    description: Cohort KPI mart by signup month and country, including net revenue, LTV, and order metrics excluding cancelled and refunded orders.
+    columns:
+      - name: signup_cohort_month
+        description: First day of the signup month for the cohort.
+        data_tests:
+          - not_null
+      - name: country
+        description: Customer country.
+        data_tests:
+          - not_null
+      - name: customers_in_cohort
+        description: Number of customers in the signup cohort and country.
+      - name: customers_with_orders
+        description: Number of cohort customers with at least one valid order.
+      - name: order_count
+        description: Number of non-cancelled and non-refunded orders for the cohort.
+      - name: total_revenue_eur
+        description: Net revenue in euros after discounts for valid orders.
+      - name: ltv_eur
+        description: Total net revenue divided by customers in cohort.
+      - name: orders_per_customer
+        description: Valid order count divided by customers in cohort.
